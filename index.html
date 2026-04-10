@@ -204,8 +204,7 @@ input:focus,select:focus{box-shadow:0 0 0 2px #85B7EB;}
     </div>
     <div class="modal-gap-row" id="modalGapRow" style="display:none;"></div>
     <div id="modalBody"></div>
-    <button style="width:100%;padding:11px;font-size:15px;margin-top:.5rem;" class="btn-blue" onclick="saveAndClose()">儲存並關閉</button>
-  </div>
+<button style="width:100%;padding:11px;font-size:15px;margin-top:.5rem;" class="btn-blue" onclick="saveAndClose()">儲存並關閉</button>  </div>
 </div>
 
 <script>
@@ -217,10 +216,57 @@ var today=new Date(),vy=today.getFullYear(),vm=today.getMonth();
 var ovy=vy,ovm=vm,staffY=vy,staffM=vm;
 var currentUser=null;
 var modalPid,modalD,modalY,modalM;
-var state={
-  staff:[{id:1,name:'小明'},{id:2,name:'小華'},{id:3,name:'小美'}],
-  nextId:4,schedule:{},pref:{},
+// --- 雲端設定區 ---
+const AIRTABLE_TOKEN = 'patPgmAjSl1k1A8cY.b7a35d66c8af6534f68416f3cd39c3df4529dc3c65187f4d92a81b258bf01861'; // 貼上 pat... 開頭的那串
+const BASE_ID = 'appDKrrDajmGnfluF';           // 貼上 app... 開頭的那串
+const TABLE_NAME = 'SyncData';
+let RECORD_ID = ''; // 系統會自動獲取，不需手動填寫
+
+  let state = {
+  staff:[{id:1,name:'許芸慈'},{id:2,name:'林欣汶'}],
+  nextId:3,schedule:{},pref:{},
   weekTpl:[0,1,2,3,4,5,6].map(function(){return{am:false,amN:1,pm:false,pmN:1};})
+// --- 雲端同步函式 ---
+
+// 1. 從 Airtable 讀取
+async function loadFromCloud() {
+  const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}?filterByFormula={Name}='PrimaryConfig'`;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
+    });
+    const res = await resp.json();
+    if (res.records && res.records.length > 0) {
+      RECORD_ID = res.records[0].id;
+      if (res.records[0].fields.JSONContent) {
+        state = JSON.parse(res.records[0].fields.JSONContent);
+        console.log("雲端資料讀取成功");
+        refreshStaffOpts(); // 更新選單
+      }
+    }
+  } catch (e) { console.error("雲端讀取失敗:", e); }
+}
+  // 2. 寫入到 Airtable
+async function saveToCloud() {
+  if (!RECORD_ID) { console.error("未獲取 RECORD_ID，無法存檔"); return; }
+  const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}/${RECORD_ID}`;
+  const body = { fields: { "JSONContent": JSON.stringify(state) } };
+  
+  try {
+    await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    console.log("雲端同步完成");
+  } catch (e) { console.error("雲端存檔失敗:", e); }
+}
+  // --- 在頁面最後啟動讀取 ---
+window.onload = function() {
+  loadFromCloud();
 };
 function pad(n){return n<10?'0'+n:''+n;}
 function mkey(y,m){return y+'-'+pad(m+1);}
@@ -317,7 +363,7 @@ function openDayModal(pid,d,y,m){
   document.getElementById('modalBody').innerHTML=html;
   document.getElementById('dayOverlay').classList.add('show');
 }
-function closeModal(){document.getElementById('dayOverlay').classList.remove('show');if(currentUser&&currentUser.role==='staff'){updateStaffStats();renderStaffRow(modalD);}}
+function (){document.getElementById('dayOverlay').classList.remove('show');if(currentUser&&currentUser.role==='staff'){updateStaffStats();renderStaffRow(modalD);}}
 function overlayBgClick(e){if(e.target===document.getElementById('dayOverlay'))closeModal();}
 function ensureDay(){var k=mkey(modalY,modalM);if(!state.schedule[k])state.schedule[k]={};if(!state.schedule[k][modalPid])state.schedule[k][modalPid]={};if(!state.schedule[k][modalPid][modalD])state.schedule[k][modalPid][modalD]={am:false,ams:'09:00',ame:'12:00',pm:false,pms:'13:00',pme:'16:00'};}
 function mToggle(slot){ensureDay();var k=mkey(modalY,modalM),checked=document.getElementById('m_'+slot).checked;state.schedule[k][modalPid][modalD][slot]=checked;var t=document.getElementById('m_'+slot+'_t');if(t)t.style.cssText=checked?'':'opacity:.4;pointer-events:none;';refreshModalGap();}
@@ -336,10 +382,10 @@ function applyWeekTemplate(){var dim=new Date(vy,vm+1,0).getDate();for(var d=1;d
 function renderPrefGrid(){var el=document.getElementById('prefGrid');if(!el)return;var dim=new Date(vy,vm+1,0).getDate(),html='';for(var d=1;d<=dim;d++){var dow=new Date(vy,vm,d).getDay(),isWE=dow===0||dow===6,pr=getPref(d,vy,vm);html+='<div class="pref-day-row"><div style="font-size:11px;color:'+(isWE?'#A32D2D':'#666')+';line-height:1.5;text-align:center;">'+(vm+1)+'/'+d+'<br>'+DW[dow]+'</div><div style="display:flex;flex-direction:column;gap:4px;"><button id="pam_'+d+'" class="toggle-btn'+(pr.am?' on-am':'')+'" onclick="togglePref('+d+',\'am\')" style="font-size:12px;padding:6px 0;width:100%;">'+(pr.am?'&#10003; 上午':'上午')+'</button>'+(pr.am?'<div style="display:flex;align-items:center;gap:3px;"><span style="font-size:11px;color:#666;">需</span><select id="pamN_'+d+'" onchange="savePrefN('+d+',\'am\')" style="font-size:12px;padding:3px;flex:1;">'+[1,2,3].map(function(n){return '<option value="'+n+'"'+(pr.amN===n?' selected':'')+'>'+n+' 人</option>';}).join('')+'</select></div>':'')+'</div><div style="display:flex;flex-direction:column;gap:4px;"><button id="ppm_'+d+'" class="toggle-btn'+(pr.pm?' on-pm':'')+'" onclick="togglePref('+d+',\'pm\')" style="font-size:12px;padding:6px 0;width:100%;">'+(pr.pm?'&#10003; 下午':'下午')+'</button>'+(pr.pm?'<div style="display:flex;align-items:center;gap:3px;"><span style="font-size:11px;color:#666;">需</span><select id="ppmN_'+d+'" onchange="savePrefN('+d+',\'pm\')" style="font-size:12px;padding:3px;flex:1;">'+[1,2,3].map(function(n){return '<option value="'+n+'"'+(pr.pmN===n?' selected':'')+'>'+n+' 人</option>';}).join('')+'</select></div>':'')+'</div></div>';}el.innerHTML=html;}
 function togglePref(d,slot){var pr=getPref(d,vy,vm),u={am:pr.am,amN:pr.amN||1,pm:pr.pm,pmN:pr.pmN||1};u[slot]=!pr[slot];setPref(d,u,vy,vm);renderPrefGrid();}
 function savePrefN(d,slot){var pr=getPref(d,vy,vm),u={am:pr.am,amN:pr.amN||1,pm:pr.pm,pmN:pr.pmN||1};var el=document.getElementById((slot==='am'?'pamN_':'ppmN_')+d);if(el)u[slot==='am'?'amN':'pmN']=parseInt(el.value);setPref(d,u,vy,vm);}
-function addStaff(){var inp=document.getElementById('newName'),name=inp.value.trim();if(!name)return;state.staff.push({id:state.nextId++,name:name});inp.value='';refreshStaffOpts();renderAdmin();}
-function removeStaff(id){state.staff=state.staff.filter(function(p){return p.id!==id;});refreshStaffOpts();renderAdmin();}
+function addStaff(){var inp=document.getElementById('newName'),name=inp.value.trim();if(!name)return;state.staff.push({id:state.nextId++,name:name});inp.value='';refreshStaffOpts();renderAdmin();saveToCloud();}
+function removeStaff(id){state.staff=state.staff.filter(function(p){return p.id!==id;});refreshStaffOpts();renderAdmin();saveToCloud();}
 function doPrint(){var dim=new Date(vy,vm+1,0).getDate(),k=mkey(vy,vm),rows='';for(var d=1;d<=dim;d++){var dow=new Date(vy,vm,d).getDay(),isWE=dow===0||dow===6,pr=getPref(d,vy,vm),amL=[],pmL=[];state.staff.forEach(function(p){var day=((state.schedule[k]||{})[p.id]||{})[d];if(!day)return;if(day.am&&day.ams&&day.ame&&calcH(day.ams,day.ame)>0)amL.push(p.name+'('+day.ams+'–'+day.ame+')');if(day.pm&&day.pms&&day.pme&&calcH(day.pms,day.pme)>0)pmL.push(p.name+'('+day.pms+'–'+day.pme+')');});var amGap=gapLabel(d,'am',vy,vm),pmGap=gapLabel(d,'pm',vy,vm);var aGH=amGap?'<span style="font-size:9px;background:'+(amGap.cls==='gap-full'?'#E1F5EE':'#FAEEDA')+';color:'+(amGap.cls==='gap-full'?'#085041':'#633806')+';padding:0 4px;border-radius:2px;margin-left:2px;">'+amGap.text+'</span>':'';var pGH=pmGap?'<span style="font-size:9px;background:'+(pmGap.cls==='gap-full'?'#E1F5EE':'#FAEEDA')+';color:'+(pmGap.cls==='gap-full'?'#085041':'#633806')+';padding:0 4px;border-radius:2px;margin-left:2px;">'+pmGap.text+'</span>':'';rows+='<tr style="background:'+(isWE?'#f8f4ef':'#fff')+'"><td style="font-weight:700;text-align:center;white-space:nowrap;color:'+(dow===0?'#c0392b':dow===6?'#185FA5':'#333')+';border-right:2px solid #ddd;">'+(vm+1)+'/'+d+'<br><span style="font-size:10px;font-weight:400;color:#888;">'+DW[dow]+'</span></td><td style="border-right:1px solid #eee;">'+(pr.am?'<span style="font-size:9px;background:#E1F5EE;color:#085041;padding:0 4px;border-radius:2px;margin-right:2px;">偏好</span>':'')+(amL.length?amL.map(function(n){return '<span style="display:inline-block;background:#d4f5e6;color:#085041;border-radius:3px;padding:2px 6px;font-size:11px;margin:1px;">'+n+'</span>';}).join(''):'<span style="color:#bbb;font-size:11px;">—</span>')+aGH+'</td><td>'+(pr.pm?'<span style="font-size:9px;background:#FAEEDA;color:#633806;padding:0 4px;border-radius:2px;margin-right:2px;">偏好</span>':'')+(pmL.length?pmL.map(function(n){return '<span style="display:inline-block;background:#fde8c3;color:#633806;border-radius:3px;padding:2px 6px;font-size:11px;margin:1px;">'+n+'</span>';}).join(''):'<span style="color:#bbb;font-size:11px;">—</span>')+pGH+'</td></tr>';}var sr='';state.staff.forEach(function(p){var h=monthHrs(p.id,vy,vm),ok=h>=TARGET;sr+='<tr><td>'+p.name+'</td><td>'+h.toFixed(1)+' h</td><td style="color:'+(ok?'#0F6E56':'#A32D2D')+'">'+(ok?'已達標':'尚缺 '+(TARGET-h).toFixed(1)+'h')+'</td></tr>';});var w=window.open('','_blank');w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+vy+'年'+(vm+1)+'月班表</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;padding:20px;font-size:13px;}h1{font-size:20px;font-weight:700;margin-bottom:4px;}.sub{font-size:11px;color:#888;margin-bottom:12px;}.leg{display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;}.li{display:flex;align-items:center;gap:4px;font-size:11px;}.ld{width:12px;height:10px;border-radius:2px;}.sh{font-size:12px;font-weight:700;background:#333;color:#fff;padding:5px 10px;margin-bottom:0;}table{width:100%;border-collapse:collapse;margin-bottom:14px;}th{background:#555;color:#fff;padding:7px 10px;font-size:12px;text-align:left;}td{padding:6px 8px;border-bottom:0.5px solid #e0e0e0;vertical-align:middle;}.ft{font-size:10px;color:#aaa;border-top:1px solid #eee;padding-top:8px;margin-top:8px;display:flex;justify-content:space-between;}@media print{body{padding:8px;}@page{margin:.8cm;size:A4;}}</style></head><body><h1>'+vy+' 年 '+MONTHS[vm]+' 班表</h1><div class="sub">共 '+state.staff.length+' 位人員　目標：'+TARGET+'h／人</div><div class="leg"><div class="li"><div class="ld" style="background:#d4f5e6;"></div>上午班</div><div class="li"><div class="ld" style="background:#fde8c3;"></div>下午班</div><div class="li"><div class="ld" style="background:#FAEEDA;border:1px solid #FAC775;"></div>管理者偏好</div></div><div class="sh">每日上下午出班人員</div><table><thead><tr><th style="width:50px;">日期</th><th style="width:50%;">上午班</th><th>下午班</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sh">人員工時統計</div><table><thead><tr><th>姓名</th><th>本月總工時</th><th>狀態</th></tr></thead><tbody>'+sr+'</tbody></table><div class="ft"><span>'+vy+' 年 '+MONTHS[vm]+'　共 '+dim+' 天</span><span>列印：'+new Date().toLocaleString('zh-TW')+'</span></div><scr'+'ipt>window.onload=function(){window.print()};<\/script></body></html>');w.document.close();}
-refreshStaffOpts();
+loadFromCloud();
 </script>
 </body>
 </html>
