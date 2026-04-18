@@ -216,19 +216,20 @@ var today=new Date(),vy=today.getFullYear(),vm=today.getMonth();
 var ovy=vy,ovm=vm,staffY=vy,staffM=vm;
 var currentUser=null;
 var modalPid,modalD,modalY,modalM;
-// --- 雲端設定區 ---
-const AIRTABLE_TOKEN = 'patPgmAjSl1k1A8cY.b7a35d66c8af6534f68416f3cd39c3df4529dc3c65187f4d92a81b258bf01861'; // 貼上 pat... 開頭的那串
-const BASE_ID = 'appDKrrDajmGnfluF';           // 貼上 app... 開頭的那串
-const TABLE_NAME = 'SyncData';
-let RECORD_ID = ''; // 系統會自動獲取，不需手動填寫
 
-  let state = {
+// --- 雲端設定區 ---
+const AIRTABLE_TOKEN = 'patPgmAjSl1k1A8cY.b7a35d66c8af6534f68416f3cd39c3df4529dc3c65187f4d92a81b258bf01861'; 
+const BASE_ID = 'appDKrrDajmGnfluF';            
+const TABLE_NAME = 'SyncData';
+let RECORD_ID = ''; 
+
+let state = {
   staff:[{id:1,name:'許芸慈'},{id:2,name:'林欣汶'}],
   nextId:3,schedule:{},pref:{},
   weekTpl:[0,1,2,3,4,5,6].map(function(){return{am:false,amN:1,pm:false,pmN:1};})
-// --- 雲端同步函式 ---
+}; // 已修正括號
 
-// 1. 從 Airtable 讀取
+// --- 雲端同步函式 ---
 async function loadFromCloud() {
   const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}?filterByFormula={Name}='PrimaryConfig'`;
   try {
@@ -241,17 +242,16 @@ async function loadFromCloud() {
       if (res.records[0].fields.JSONContent) {
         state = JSON.parse(res.records[0].fields.JSONContent);
         console.log("雲端資料讀取成功");
-        refreshStaffOpts(); // 更新選單
+        refreshStaffOpts(); 
       }
     }
   } catch (e) { console.error("雲端讀取失敗:", e); }
 }
-  // 2. 寫入到 Airtable
+
 async function saveToCloud() {
   if (!RECORD_ID) { console.error("未獲取 RECORD_ID，無法存檔"); return; }
   const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}/${RECORD_ID}`;
   const body = { fields: { "JSONContent": JSON.stringify(state) } };
-  
   try {
     await fetch(url, {
       method: 'PATCH',
@@ -264,10 +264,16 @@ async function saveToCloud() {
     console.log("雲端同步完成");
   } catch (e) { console.error("雲端存檔失敗:", e); }
 }
-  // --- 在頁面最後啟動讀取 ---
+
+async function saveAndClose() {
+  closeModal();
+  await saveToCloud();
+}
+
 window.onload = function() {
   loadFromCloud();
 };
+// ... 後接原本的函式 (pad, mkey, t2n 等)
 function pad(n){return n<10?'0'+n:''+n;}
 function mkey(y,m){return y+'-'+pad(m+1);}
 function t2n(t){var p=t.split(':');return +p[0]+ +p[1]/60;}
@@ -363,7 +369,11 @@ function openDayModal(pid,d,y,m){
   document.getElementById('modalBody').innerHTML=html;
   document.getElementById('dayOverlay').classList.add('show');
 }
-function (){document.getElementById('dayOverlay').classList.remove('show');if(currentUser&&currentUser.role==='staff'){updateStaffStats();renderStaffRow(modalD);}}
+function closeModal(){document.getElementById('dayOverlay').classList.remove('show'); if(currentUser&&currentUser.role==='staff'){updateStaffStats();renderStaffRow(modalD);}}
+  async function saveAndClose() {
+    closeModal();      // 先執行關閉與介面更新
+    await saveToCloud(); // 再執行背景雲端存檔
+     }
 function overlayBgClick(e){if(e.target===document.getElementById('dayOverlay'))closeModal();}
 function ensureDay(){var k=mkey(modalY,modalM);if(!state.schedule[k])state.schedule[k]={};if(!state.schedule[k][modalPid])state.schedule[k][modalPid]={};if(!state.schedule[k][modalPid][modalD])state.schedule[k][modalPid][modalD]={am:false,ams:'09:00',ame:'12:00',pm:false,pms:'13:00',pme:'16:00'};}
 function mToggle(slot){ensureDay();var k=mkey(modalY,modalM),checked=document.getElementById('m_'+slot).checked;state.schedule[k][modalPid][modalD][slot]=checked;var t=document.getElementById('m_'+slot+'_t');if(t)t.style.cssText=checked?'':'opacity:.4;pointer-events:none;';refreshModalGap();}
