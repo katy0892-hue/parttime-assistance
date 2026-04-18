@@ -226,8 +226,7 @@ let RECORD_ID = '';
 let state = {
   staff:[{id:1,name:'許芸慈'},{id:2,name:'林欣汶'}],
   nextId:3,schedule:{},pref:{},
-  weekTpl:[0,1,2,3,4,5,6].map(function(){return{am:false,amN:1,pm:false,pmN:1};})
-}; // 已修正括號
+  weekTpl:[0,1,2,3,4,5,6].map(function(){return{am:false,amN:1,pm:false,pmN:1};})}; // 已修正括號
 
 // --- 雲端同步函式 ---
 async function loadFromCloud() {
